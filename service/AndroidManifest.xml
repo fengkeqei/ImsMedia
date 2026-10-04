@@ -25,6 +25,11 @@
       android:label="Permission to bind to ImsMedia"/>
 
   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <!-- Round 71: privileged capture during active calls. AudioPolicyManager
+       silences capture clients lacking this permission while a call is in
+       progress ("client can capture calls" gate) — without it the IMS uplink
+       is zero-filled. -->
+  <uses-permission android:name="android.permission.CAPTURE_AUDIO_OUTPUT"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.CAMERA" />

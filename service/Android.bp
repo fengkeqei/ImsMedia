@@ -51,6 +51,7 @@ android_app {
     ],
     required: [
         "libimsmedia",
+        "privapp-permissions_com.android.telephony.imsmedia",
     ],
     dex_preopt: {
         enabled: false,
@@ -62,4 +63,12 @@ android_app {
     privileged: true,
     certificate: "platform",
     platform_apis: true,
+}
+
+prebuilt_etc {
+    name: "privapp-permissions_com.android.telephony.imsmedia",
+    src: "sysconfig/privapp-permissions-com.android.telephony.imsmedia.xml",
+    sub_dir: "permissions",
+    filename_from_src: true,
+    system_ext_specific: true,
 }

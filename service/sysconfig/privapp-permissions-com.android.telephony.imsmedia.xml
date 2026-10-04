@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 71: privileged permissions for the IMS media service. -->
+<permissions>
+    <privapp-permissions package="com.android.telephony.imsmedia">
+        <permission name="android.permission.CAPTURE_AUDIO_OUTPUT"/>
+    </privapp-permissions>
+</permissions>

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <android/log.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -317,6 +318,24 @@ void* ImsMediaAudioSource::run()
 
             if (readSize > 0)
             {
+                // Round 71 debug: log max abs sample every ~1s to verify the
+                // captured mic content (silence vs real audio).
+                static int16_t sMaxAmp = 0;
+                static uint32_t sFrames = 0;
+                for (int32_t i = 0; i < readSize; i++)
+                {
+                    int16_t v = buffer[i];
+                    if (v < 0) v = -v;
+                    if (v > sMaxAmp) sMaxAmp = v;
+                }
+                sFrames += readSize;
+                if (sFrames >= 16000) // ~1s at 16k
+                {
+                    __android_log_print(ANDROID_LOG_INFO, "ims-mic-probe",
+                        "[mic-probe] maxAmp[%d]", sMaxAmp);
+                    sFrames = 0;
+                    sMaxAmp = 0;
+                }
                 IMLOGD_PACKET1(IM_PACKET_LOG_AUDIO, "[run] nReadSize[%d]", readSize);
                 const int64_t ptsUsec = ImsMediaTimer::GetTimeInMicroSeconds();
                 if (mCodecType == kAudioCodecAmr || mCodecType == kAudioCodecAmrWb)
@@ -393,6 +412,11 @@ void ImsMediaAudioSource::openAudioStream()
             return;
         }
 
+        // Round 71: VOICE_COMMUNICATION preset makes AudioPolicyManager add the
+        // VOIP_TX input flag (AudioPolicyManager.cpp: VOICE_COMMUNICATION source
+        // => flags |= VOIP_TX) so the capture opens the HAL's VoIP usecase
+        // (pcm3, voip-comm-* paths, working mic wiring) instead of the call-*
+        // voice/modem frontend that reads silence for open-source IMS calls.
         AAudioStreamBuilder_setInputPreset(builder, AAUDIO_INPUT_PRESET_VOICE_COMMUNICATION);
         AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_INPUT);
         AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
@@ -405,7 +429,10 @@ void ImsMediaAudioSource::openAudioStream()
         AAudioStreamBuilder_setSessionId(builder, AAUDIO_SESSION_ID_ALLOCATE);
         AAudioStreamBuilder_setUsage(builder, AAUDIO_USAGE_VOICE_COMMUNICATION);
         AAudioStreamBuilder_setErrorCallback(builder, audioErrorCallback, this);
-        AAudioStreamBuilder_setPrivacySensitive(builder, true);
+        // Round 71: NO privacy-sensitive flag. The imsmedia service runs in the
+        // background; a privacy-sensitive capture from a background service is
+        // REJECTED by appops (silenced) -> the uplink was pure silence.
+        // The telephony process is privileged for call audio capture.
 
         result = AAudioStreamBuilder_openStream(builder, &mAudioStream);
         AAudioStreamBuilder_delete(builder);
