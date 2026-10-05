@@ -50,8 +50,10 @@ public:
     static ImsMediaAec* GetInstance();
 
     /** Feed decoded downlink PCM (host order int16, mono) as the far-end echo
-     * reference. Call right before the frames are handed to the audio sink. */
-    void FeedFarEnd(const int16_t* data, int32_t numFrames, int32_t sampleRate);
+     * reference. Call right before the frames are handed to the audio sink.
+     * delayMs is the measured latency between this reference point and the
+     * acoustic output (AAudio/HAL buffering), used as the AEC alignment hint. */
+    void FeedFarEnd(const int16_t* data, int32_t numFrames, int32_t sampleRate, int32_t delayMs);
 
     /** Filter captured uplink PCM in place before encoding. */
     void ProcessNear(int16_t* data, int32_t numFrames, int32_t sampleRate);
@@ -65,6 +67,7 @@ private:
     bool mEnabled = false;
     int32_t mCaptureRate = 0;
     int32_t mRenderRate = 0;
+    int32_t mDelayMs = 0;
     std::vector<int16_t> mFarAcc;
     std::vector<int16_t> mNearAcc;
     std::vector<int16_t> mOutAcc;

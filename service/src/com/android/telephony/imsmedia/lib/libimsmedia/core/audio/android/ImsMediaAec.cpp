@@ -55,7 +55,8 @@ void ImsMediaAec::EnsureInit_l(int32_t sampleRate)
     AEC_LOGI("[EnsureInit] created APM, AEC3+NS+HPF, rate[%d]", sampleRate);
 }
 
-void ImsMediaAec::FeedFarEnd(const int16_t* data, int32_t numFrames, int32_t sampleRate)
+void ImsMediaAec::FeedFarEnd(
+        const int16_t* data, int32_t numFrames, int32_t sampleRate, int32_t delayMs)
 {
     if (data == nullptr || numFrames <= 0 || sampleRate <= 0)
     {
@@ -70,6 +71,13 @@ void ImsMediaAec::FeedFarEnd(const int16_t* data, int32_t numFrames, int32_t sam
     }
 
     mRenderRate = sampleRate;
+    mDelayMs = delayMs;
+    static uint32_t sDelayLogCounter = 0;
+    if (++sDelayLogCounter >= 100)
+    {
+        sDelayLogCounter = 0;
+        AEC_LOGI("[FeedFarEnd] delayMs[%d]", delayMs);
+    }
     const int32_t frame = sampleRate / 100;  // 10 ms of mono samples
     if (frame <= 0)
     {
@@ -118,9 +126,9 @@ void ImsMediaAec::ProcessNear(int16_t* data, int32_t numFrames, int32_t sampleRa
     webrtc::StreamConfig cfg(sampleRate, 1);
     while ((int32_t)mNearAcc.size() >= frame)
     {
-        // The render stream is aligned by the AEC3 delay estimator, so always
-        // declare zero delay here.
-        mApm->set_stream_delay_ms(0);
+        // Render/capture alignment hint: measured AAudio/HAL playback buffering
+        // of the far-end reference. AEC3 refines the residual offset itself.
+        mApm->set_stream_delay_ms(mDelayMs);
         int ret = mApm->ProcessStream(mNearAcc.data(), cfg, cfg, scratch.data());
         if (ret != webrtc::AudioProcessing::kNoError)
         {

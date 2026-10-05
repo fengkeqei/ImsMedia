@@ -425,9 +425,26 @@ bool ImsMediaAudioPlayer::writeAudioFrames(const uint16_t* buffer, int32_t numFr
 
     int32_t totalFramesWritten = 0;
     // Round-72 72-2n: feed the downlink to the in-process AEC as the far-end
-    // reference right before it is rendered.
-    ImsMediaAec::GetInstance()->FeedFarEnd(reinterpret_cast<const int16_t*>(buffer), numFrames,
-            mSamplingRate);
+    // reference right before it is rendered. The delay hint is the frames
+    // buffered ahead in AAudio/HAL (written but not yet played) — the gap
+    // between this reference and the actual acoustic output.
+    if (mAudioStream != nullptr)
+    {
+        const int64_t bufferedFrames =
+                AAudioStream_getFramesWritten(mAudioStream) -
+                AAudioStream_getFramesRead(mAudioStream);
+        if (bufferedFrames > 0 && mSamplingRate > 0)
+        {
+            ImsMediaAec::GetInstance()->FeedFarEnd(reinterpret_cast<const int16_t*>(buffer),
+                    numFrames, mSamplingRate,
+                    static_cast<int32_t>(bufferedFrames * 1000 / mSamplingRate));
+        }
+        else
+        {
+            ImsMediaAec::GetInstance()->FeedFarEnd(reinterpret_cast<const int16_t*>(buffer),
+                    numFrames, mSamplingRate, 0);
+        }
+    }
     uint64_t deadlineUs = ImsMediaTimer::GetTimeInMicroSeconds() +
             AUDIO_FRAME_DURATION_NANO / 1000;
 
