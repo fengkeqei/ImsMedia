@@ -31,8 +31,9 @@
 static constexpr float kNearSpeechRmsThresh = 1200.0f;
 // Gain applied to the processed uplink while the near end is silent: enough to
 // break the speakerphone howl loop, small enough to stay invisible for normal
-// conversation (residual echo only).
-static constexpr float kSilenceGain = 0.15f;
+// conversation (residual echo only). -34dB: even a strong residual cannot
+// sustain the loop.
+static constexpr float kSilenceGain = 0.02f;
 static constexpr float kNearSpeechGain = 1.0f;
 
 ImsMediaAec* ImsMediaAec::GetInstance()
@@ -173,7 +174,7 @@ void ImsMediaAec::ProcessNear(int16_t* data, int32_t numFrames, int32_t sampleRa
         }
         else
         {
-            mGain += (kSilenceGain - mGain) * 0.4f;  // ~2 chunks to duck
+            mGain += (kSilenceGain - mGain) * 0.7f;  // ~2-3 chunks to full duck
         }
         if (mGain < 0.999f)
         {
