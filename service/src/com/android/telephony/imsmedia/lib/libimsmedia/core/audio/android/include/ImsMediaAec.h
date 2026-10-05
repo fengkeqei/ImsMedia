@@ -68,6 +68,8 @@ private:
     int32_t mCaptureRate = 0;
     int32_t mRenderRate = 0;
     int32_t mDelayMs = 0;
+    float mFarRms = 0.0f;  // smoothed far-end loudness (residual suppressor)
+    float mGain = 1.0f;    // current uplink gain of the residual suppressor
     std::vector<int16_t> mFarAcc;
     std::vector<int16_t> mNearAcc;
     std::vector<int16_t> mOutAcc;

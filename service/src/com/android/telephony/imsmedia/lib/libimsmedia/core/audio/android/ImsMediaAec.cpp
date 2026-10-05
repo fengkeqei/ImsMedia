@@ -19,8 +19,21 @@
 #include <android/log.h>
 #include <modules/audio_processing/include/audio_processing.h>
 
+#include <algorithm>
+#include <cmath>
+
 #define AEC_LOGI(...) __android_log_print(ANDROID_LOG_INFO, "ims-aec", __VA_ARGS__)
 #define AEC_LOGW(...) __android_log_print(ANDROID_LOG_WARN, "ims-aec", __VA_ARGS__)
+
+// Near-end voice activity threshold on the raw capture RMS (int16 scale,
+// 1200 ≈ -28dBFS): above it the local user is speaking and the processed
+// uplink passes untouched.
+static constexpr float kNearSpeechRmsThresh = 1200.0f;
+// Gain applied to the processed uplink while the near end is silent: enough to
+// break the speakerphone howl loop, small enough to stay invisible for normal
+// conversation (residual echo only).
+static constexpr float kSilenceGain = 0.15f;
+static constexpr float kNearSpeechGain = 1.0f;
 
 ImsMediaAec* ImsMediaAec::GetInstance()
 {
@@ -72,18 +85,14 @@ void ImsMediaAec::FeedFarEnd(
 
     mRenderRate = sampleRate;
     mDelayMs = delayMs;
-    static uint32_t sDelayLogCounter = 0;
-    if (++sDelayLogCounter >= 100)
-    {
-        sDelayLogCounter = 0;
-        AEC_LOGI("[FeedFarEnd] delayMs[%d]", delayMs);
-    }
+    // Track far-end loudness (smoothed RMS over processed chunks) for the
+    // residual suppressor: FeedFarEnd is called for silence frames too, so this
+    // decays naturally when the far end goes quiet.
     const int32_t frame = sampleRate / 100;  // 10 ms of mono samples
     if (frame <= 0)
     {
         return;
     }
-
     mFarAcc.insert(mFarAcc.end(), data, data + numFrames);
     std::vector<int16_t> scratch(frame);
     webrtc::StreamConfig cfg(sampleRate, 1);
@@ -96,6 +105,13 @@ void ImsMediaAec::FeedFarEnd(
             mFarAcc.clear();
             return;
         }
+        double acc = 0;
+        for (int32_t i = 0; i < frame; i++)
+        {
+            acc += (double)scratch[i] * scratch[i];
+        }
+        const float rms = (float)sqrt(acc / frame);
+        mFarRms = 0.8f * mFarRms + 0.2f * rms;
         mFarAcc.erase(mFarAcc.begin(), mFarAcc.begin() + frame);
     }
 }
@@ -124,10 +140,23 @@ void ImsMediaAec::ProcessNear(int16_t* data, int32_t numFrames, int32_t sampleRa
     mNearAcc.insert(mNearAcc.end(), data, data + numFrames);
     std::vector<int16_t> scratch(frame);
     webrtc::StreamConfig cfg(sampleRate, 1);
+    static uint32_t sTuneLogCounter = 0;
     while ((int32_t)mNearAcc.size() >= frame)
     {
-        // Render/capture alignment hint: measured AAudio/HAL playback buffering
-        // of the far-end reference. AEC3 refines the residual offset itself.
+        // Near-end voice activity on the raw capture: while the local user is
+        // talking the processed audio passes untouched; while they are silent
+        // any significant remaining energy is echo residual, and attenuating it
+        // breaks the speakerphone howl loop (mute stops the squeal the same
+        // way, this only ducks the residual instead of cutting the mic).
+        double acc = 0;
+        for (int32_t i = 0; i < frame; i++)
+        {
+            const int16_t v = mNearAcc[i];
+            acc += (double)v * v;
+        }
+        const float rawRms = (float)sqrt(acc / frame);
+        const bool nearSpeaking = rawRms > kNearSpeechRmsThresh;
+
         mApm->set_stream_delay_ms(mDelayMs);
         int ret = mApm->ProcessStream(mNearAcc.data(), cfg, cfg, scratch.data());
         if (ret != webrtc::AudioProcessing::kNoError)
@@ -137,8 +166,32 @@ void ImsMediaAec::ProcessNear(int16_t* data, int32_t numFrames, int32_t sampleRa
             mOutAcc.clear();
             return;
         }
+
+        if (nearSpeaking)
+        {
+            mGain = kNearSpeechGain;
+        }
+        else
+        {
+            mGain += (kSilenceGain - mGain) * 0.4f;  // ~2 chunks to duck
+        }
+        if (mGain < 0.999f)
+        {
+            for (int32_t i = 0; i < frame; i++)
+            {
+                scratch[i] = (int16_t)std::max(-32768,
+                        std::min(32767, (int)(scratch[i] * mGain)));
+            }
+        }
         mOutAcc.insert(mOutAcc.end(), scratch.begin(), scratch.end());
         mNearAcc.erase(mNearAcc.begin(), mNearAcc.begin() + frame);
+
+        if (++sTuneLogCounter >= 500)
+        {
+            sTuneLogCounter = 0;
+            AEC_LOGI("[ProcessNear] rawRms[%.0f] farRms[%.0f] gain[%.2f] delayMs[%d]",
+                    rawRms, mFarRms, mGain, mDelayMs);
+        }
     }
 
     // Hand back exactly the burst that was passed in; keep any surplus
