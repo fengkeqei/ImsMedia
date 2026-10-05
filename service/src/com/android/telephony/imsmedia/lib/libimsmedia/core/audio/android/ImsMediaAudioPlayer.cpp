@@ -31,6 +31,7 @@
 #include <ImsMediaTimer.h>
 #include <ImsMediaAudioUtil.h>
 #include <ImsMediaAudioPlayer.h>
+#include <ImsMediaAec.h>
 #include <utils/Errors.h>
 
 #define AAUDIO_STATE_TIMEOUT_NANO (100 * 1000000L)
@@ -423,6 +424,10 @@ bool ImsMediaAudioPlayer::writeAudioFrames(const uint16_t* buffer, int32_t numFr
     }
 
     int32_t totalFramesWritten = 0;
+    // Round-72 72-2n: feed the downlink to the in-process AEC as the far-end
+    // reference right before it is rendered.
+    ImsMediaAec::GetInstance()->FeedFarEnd(reinterpret_cast<const int16_t*>(buffer), numFrames,
+            mSamplingRate);
     uint64_t deadlineUs = ImsMediaTimer::GetTimeInMicroSeconds() +
             AUDIO_FRAME_DURATION_NANO / 1000;
 

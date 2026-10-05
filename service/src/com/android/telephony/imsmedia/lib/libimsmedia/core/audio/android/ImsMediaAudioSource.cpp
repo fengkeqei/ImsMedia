@@ -25,6 +25,7 @@
 #include <ImsMediaTrace.h>
 #include <ImsMediaAudioUtil.h>
 #include <ImsMediaAudioSource.h>
+#include <ImsMediaAec.h>
 #include <utils/Errors.h>
 
 #include <chrono>
@@ -318,6 +319,10 @@ void* ImsMediaAudioSource::run()
 
             if (readSize > 0)
             {
+                // Round-72 72-2n: cancel loudspeaker echo from the uplink before
+                // encoding (in-process far-end reference from ImsMediaAec).
+                ImsMediaAec::GetInstance()->ProcessNear(buffer, (int32_t)readSize, mSamplingRate);
+
                 // Round 71 debug: log max abs sample every ~1s to verify the
                 // captured mic content (silence vs real audio).
                 static int16_t sMaxAmp = 0;

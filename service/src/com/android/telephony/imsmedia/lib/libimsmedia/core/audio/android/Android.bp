@@ -41,6 +41,16 @@ cc_library_static {
     local_include_dirs: [
         "include",
     ],
+    // Round-72 72-2n: in-process AEC (WebRTC AudioProcessing) for the userspace
+    // IMS voice path; AOSP no longer feeds a far-end stream to the preproc AEC
+    // effect, so the echo reference must come from the decoded downlink here.
+    cflags: [
+        "-Wno-unused-parameter",
+    ],
+    static_libs: [
+        "libabsl",
+        "webrtc_audio_processing",
+    ],
     shared_libs: [
         "libaaudio",
         "libcutils",

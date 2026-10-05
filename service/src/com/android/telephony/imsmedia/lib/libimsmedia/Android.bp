@@ -46,6 +46,9 @@ cc_library_shared {
         "libimsmedia_config",
         "libimsmedia_core",
         "libimsmedia_protocol",
+        // Round-72 72-2n: userspace AEC (see libimsmedia_audio)
+        "libabsl",
+        "webrtc_audio_processing",
     ],
     shared_libs: [
         "framework-permission-aidl-cpp",
